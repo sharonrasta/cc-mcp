@@ -1,1 +1,34 @@
-/node_modules
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors/IDE
+.vscode/
+.idea/
+*.swp
+
+# Node / Web builds
+node_modules/
+dist/
+build/
+coverage/
+out/
+.next/
+.cache/
+.parcel-cache/
+*.tsbuildinfo
+.eslintcache
+
+# Logs & env
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.env
+.env.*.local
+
+# Misc
+*.local
+*.tmp
+.tmp/
