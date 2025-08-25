@@ -3,7 +3,7 @@
   "name": "MCP Console Reporter",
   "version": "1.0",
   "description": "Captures console logs and sends them to a local MCP server.",
-  "permissions": ["scripting", "activeTab"],
+  "permissions": ["scripting", "activeTab", "tabs", "debugger"],
   "host_permissions": [
     "http://localhost:3201/*",
     "http://127.0.0.1:3201/*"
