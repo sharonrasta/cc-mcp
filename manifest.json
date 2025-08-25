@@ -1,28 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "MCP Console Reporter",
-  "version": "1.0",
-  "description": "Captures console logs and sends them to a local MCP server.",
-  "permissions": ["scripting", "activeTab", "tabs", "debugger"],
-  "host_permissions": [
-    "http://localhost:3201/*",
-    "http://127.0.0.1:3201/*"
-    
-  ],
+  "name": "Live Browser (CDP Only)",
+  "version": "0.0.0",
+  "description": "Capture console/errors/warnings via Chrome DevTools Protocol.",
+  "permissions": ["debugger", "tabs", "storage"],
+  "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_start"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["injector.js"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "action": {
+    "default_title": "Live Browser",
+    "default_popup": "popup.html"
+  }
 }

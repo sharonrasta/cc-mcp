@@ -3,7 +3,8 @@ const express = require("express");
 const app = express();
 const port = 3201;
 
-app.use(express.json());
+
+app.use(express.json({ limit: "50mb" }));
 
 const consoleLogsStore = {};
 
@@ -18,39 +19,48 @@ const normalizeUrl = (urlString) => {
 // Put this just under normalizeUrl()
 const parseKeys = (urlString) => {
   try {
+    // Add protocol if it's missing
+    if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
+        urlString = `http://${urlString}`;
+    }
     const u = new URL(urlString);
     const path = u.pathname.replace(/\/$/, '');
     return { full: `${u.origin}${path}`, origin: u.origin };
-  } catch {
+  } catch (e) {
+    console.error(`Failed to parse URL: ${urlString}`, e);
     const n = normalizeUrl(urlString);
     return { full: n, origin: n };
   }
 };
 
 // Replace your entire /report route with this:
+const safeStringify = (v) => {
+  if (v === null || v === undefined) return String(v);
+  if (typeof v === 'string') return v;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+};
+
+// server.js (replace the app.post("/report") block)
 app.post("/report", (req, res) => {
   const { url, method, args } = req.body || {};
   if (!url) return res.status(400).send("Missing url");
 
-  const safeStringify = (v) => {
-    if (v === null || v === undefined) return String(v);
-    if (typeof v === 'string') return v;
-    try { return JSON.stringify(v); } catch { return String(v); }
-  };
-
-  const logString = `[${String(method || 'log').toUpperCase()}] ${
-    Array.isArray(args) ? args.map(safeStringify).join(' ') : safeStringify(args)
-  }`;
+  const logString = Array.isArray(args) ? args.map(safeStringify).join(' ') : safeStringify(args);
+  const finalLogString = `[${String(method || 'log').toUpperCase()}] ${logString}`;
 
   const { full, origin } = parseKeys(url);
 
-  if (!consoleLogsStore[full])   consoleLogsStore[full] = [];
+  if (!consoleLogsStore[full]) consoleLogsStore[full] = [];
   if (!consoleLogsStore[origin]) consoleLogsStore[origin] = [];
 
-  consoleLogsStore[full].push(logString);
-  consoleLogsStore[origin].push(logString);
+  consoleLogsStore[full].push(finalLogString);
+  consoleLogsStore[origin].push(finalLogString);
 
-  console.log(`[SERVER] Stored log for ${full}: ${logString}`);
+  console.log(`[SERVER] Stored log for ${full}: ${finalLogString}`);
   res.sendStatus(200);
 });
 
@@ -88,55 +98,89 @@ mcpRouter.post("/", (req, res) => {
             res.json({ jsonrpc: "2.0", id: id, result: { prompts: [] } });
             break;
         case "tools/list":
-            res.json({
-                jsonrpc: "2.0",
-                id: id,
-                result: {
-                    tools: [{
-                        name: "readActiveConsole",
-                        description: "Retrieves recently captured console output from a specific URL.",
-                        inputSchema: {
-                            type: "object",
-                            properties: { url: { type: "string", description: "The full URL." } },
-                            required: ["url"]
-                        }
-                    }]
+    res.json({
+        jsonrpc: "2.0",
+        id: id,
+        result: {
+            tools: [{
+                name: "readActiveConsole",
+                description: "Retrieves recently captured console output from a specific URL.",
+                inputSchema: {
+                    type: "object",
+                    properties: { url: { type: "string", description: "The full URL." } },
+                    required: ["url"]
                 }
-            });
-            break;
+            }, {
+                name: "readErrorsOnly",
+                description: "Retrieves only console errors and warnings from a specific URL.",
+                inputSchema: {
+                    type: "object",
+                    properties: { url: { type: "string", description: "The full URL." } },
+                    required: ["url"]
+                }
+            }]
+        }
+    });
+    break;
 case "tools/call": {
-  const toolName = params.name;
+    const toolName = params.name;
   const args = params.arguments;
 
   if (toolName === "readActiveConsole") {
-    const { full, origin } = parseKeys(args.url);
+    const { url } = args;
 
-    const pick = (key) =>
-      (consoleLogsStore[key] && consoleLogsStore[key].length)
-        ? consoleLogsStore[key]
-        : null;
+    // A more flexible approach: iterate through all keys to find a match
+    const matchingLogs = [];
+    const normalizedTargetOrigin = url.startsWith('http') ? new URL(url).origin : `http://${url}`;
 
-    const logs = pick(full) || pick(origin) || [];
+    for (const key in consoleLogsStore) {
+        if (key.includes(normalizedTargetOrigin)) {
+            matchingLogs.push(...consoleLogsStore[key]);
+        }
+    }
 
-    const result = logs.length
-      ? logs.join("\n")
-      : `No console logs have been captured for ${args.url}. Make sure you have visited the page.`;
+    const result = matchingLogs.length
+      ? matchingLogs.join("\n")
+      : `No console logs have been captured for ${url}. Make sure you have visited the page.`;
 
-    // clear both buckets so subsequent calls only return new lines
-    if (consoleLogsStore[full])   consoleLogsStore[full] = [];
-    if (consoleLogsStore[origin]) consoleLogsStore[origin] = [];
+    // To prevent clearing the logs, comment out or remove these lines:
+    // if (consoleLogsStore[full])   consoleLogsStore[full] = [];
+    // if (consoleLogsStore[origin]) consoleLogsStore[origin] = [];
 
     res.json({
       jsonrpc: "2.0",
       id,
       result: { content: [{ type: "text", text: result }] }
     });
-  } else {
-    res.status(404).json({
-      jsonrpc: "2.0",
-      id,
-      error: { code: -32601, message: "Method not found" }
-    });
+  } else if (toolName === "readErrorsOnly") {
+        const url = args.url.startsWith('http') ? args.url : `http://${args.url}`;
+        const { full, origin } = parseKeys(url);
+
+        const logs = [];
+        if (consoleLogsStore[full]) {
+            logs.push(...consoleLogsStore[full]);
+        }
+        if (consoleLogsStore[origin]) {
+            logs.push(...consoleLogsStore[origin]);
+        }
+
+        const filteredLogs = logs.filter(log =>
+            log.startsWith('[ERROR]') || log.startsWith('[WARNING]')
+        );
+
+        const result = filteredLogs.length
+            ? filteredLogs.join("\n")
+            : `No errors or warnings have been captured for ${args.url}.`;
+
+        res.json({
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: result }] }
+        });
+    }
+  
+  else {
+    // ... (rest of the code is unchanged)
   }
   break;
 }
